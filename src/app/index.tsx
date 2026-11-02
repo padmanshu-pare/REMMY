@@ -1,7 +1,7 @@
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,8 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MainBottomNav } from '@/components/main-bottom-nav';
-import { categories, savedItems } from '@/constants/reels';
+import { categories } from '@/constants/reels';
 import { FontFamily } from '@/constants/theme';
+import { getSavedReels, type SavedReel } from '@/lib/reel-storage';
 
 const colors = {
   background: '#100D0E',
@@ -42,6 +43,37 @@ export default function HomeScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [savedCardWidth, setSavedCardWidth] = useState(104);
+  const [savedItems, setSavedItems] = useState<SavedReel[]>([]);
+  const [libraryError, setLibraryError] = useState('');
+  const [hasLoadedLibrary, setHasLoadedLibrary] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const loadSavedItems = async () => {
+        try {
+          const items = await getSavedReels();
+          if (isActive) {
+            setSavedItems(items);
+            setLibraryError('');
+            setHasLoadedLibrary(true);
+          }
+        } catch (error) {
+          console.error('Unable to load saved Reels on Home', error);
+          if (isActive) {
+            setLibraryError('Could not load your saved Reels. Please try again.');
+            setHasLoadedLibrary(true);
+          }
+        }
+      };
+
+      void loadSavedItems();
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   const openSearch = () => {
     const searchQuery = query.trim();
@@ -81,6 +113,7 @@ export default function HomeScreen() {
                 />
               </View>
             </View>
+            {libraryError ? <Text style={styles.libraryError}>{libraryError}</Text> : null}
           </View>
 
           <View style={styles.greetingSection}>
@@ -165,7 +198,7 @@ export default function HomeScreen() {
             }}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.savedItemsRow}>
-            {savedItems.map((item) => (
+            {savedItems.length > 0 ? savedItems.map((item) => (
               <View key={item.title} style={[styles.savedCard, { width: savedCardWidth }]}>
                 <View style={[styles.thumbnail, { backgroundColor: item.tint }]}>
                   <View style={styles.thumbnailGlow} />
@@ -195,7 +228,9 @@ export default function HomeScreen() {
                   </View>
                 </View>
               </View>
-            ))}
+            )) : hasLoadedLibrary && !libraryError ? (
+              <Text style={styles.emptySavedText}>No saved Reels yet. Add one to get started.</Text>
+            ) : null}
           </ScrollView>
 
           <View style={styles.addBanner}>
@@ -385,6 +420,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
+  libraryError: {
+    fontFamily: FontFamily.medium,
+    color: '#FF8A9B',
+    fontSize: 13,
+    marginBottom: 12,
+  },
   seeAll: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -399,6 +440,12 @@ const styles = StyleSheet.create({
   savedItemsRow: {
     gap: 12,
     paddingBottom: 4,
+  },
+  emptySavedText: {
+    fontFamily: FontFamily.body,
+    color: colors.muted,
+    fontSize: 13,
+    paddingVertical: 18,
   },
   savedCard: {
     overflow: 'hidden',

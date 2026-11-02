@@ -1,6 +1,6 @@
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { Link, Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { Link, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,8 +13,9 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MainBottomNav } from '@/components/main-bottom-nav';
-import { categories, savedItems } from '@/constants/reels';
+import { categories } from '@/constants/reels';
 import { FontFamily } from '@/constants/theme';
+import { getSavedReels, type SavedReel } from '@/lib/reel-storage';
 
 const colors = {
   background: '#100D0E',
@@ -45,11 +46,39 @@ export default function SearchScreen() {
   const { q } = useLocalSearchParams<{ q?: string }>();
   const [query, setQuery] = useState(typeof q === 'string' ? q : '');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [reels, setReels] = useState<SavedReel[]>([]);
+  const [libraryError, setLibraryError] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const loadReels = async () => {
+        try {
+          const savedReels = await getSavedReels();
+          if (isActive) {
+            setReels(savedReels);
+            setLibraryError('');
+          }
+        } catch (error) {
+          console.error('Unable to load saved Reels', error);
+          if (isActive) {
+            setLibraryError('Could not load your saved Reels. Please try again.');
+          }
+        }
+      };
+
+      void loadReels();
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return savedItems.filter((item) => {
+    return reels.filter((item) => {
       const matchesCategory = !selectedCategory || item.category === selectedCategory;
       const searchableText = `${item.title} ${item.category} ${item.description} ${item.keywords}`;
       const matchesQuery =
@@ -57,7 +86,7 @@ export default function SearchScreen() {
 
       return matchesCategory && matchesQuery;
     });
-  }, [query, selectedCategory]);
+  }, [query, reels, selectedCategory]);
 
   const showResults = query.trim().length > 0 || selectedCategory !== null;
 
@@ -96,6 +125,7 @@ export default function SearchScreen() {
               <Text style={styles.subtitle}>
                 Search by topic, place, or anything you remember.
               </Text>
+              {libraryError ? <Text style={styles.libraryError}>{libraryError}</Text> : null}
 
               <View style={styles.searchBar}>
                 <Icon
@@ -186,23 +216,9 @@ export default function SearchScreen() {
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel={`View ${item.title}`}
-                            style={({ pressed }) => [
-                              styles.resultCard,
-                              pressed && styles.resultCardPressed,
-                            ]}>
+                            style={StyleSheet.flatten(styles.resultCard)}>
                             <View style={[styles.thumbnail, { backgroundColor: item.tint }]}>
-                              <Text style={styles.thumbnailEmoji}>{item.icon}</Text>
-                              <View style={styles.playButton}>
-                                <Icon
-                                  name={{
-                                    ios: 'play.fill',
-                                    android: 'play_arrow',
-                                    web: 'play_arrow',
-                                  }}
-                                  size={13}
-                                  color={colors.cream}
-                                />
-                              </View>
+                              <Icon name={item.categoryIcon} size={27} color={colors.cream} />
                             </View>
 
                             <View style={styles.resultCopy}>
@@ -227,12 +243,12 @@ export default function SearchScreen() {
 
                             <Icon
                               name={{
-                                ios: 'bookmark.fill',
-                                android: 'bookmark',
-                                web: 'bookmark',
+                                ios: 'chevron.right',
+                                android: 'chevron_right',
+                                web: 'chevron_right',
                               }}
-                              size={17}
-                              color={colors.cream}
+                              size={19}
+                              color={colors.muted}
                             />
                           </Pressable>
                         </Link>
@@ -379,6 +395,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 23,
   },
+  libraryError: {
+    fontFamily: FontFamily.medium,
+    color: '#FF8A9B',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 14,
+  },
   searchBar: {
     minHeight: 56,
     flexDirection: 'row',
@@ -489,6 +512,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   resultCard: {
+    width: '100%',
+    alignSelf: 'stretch',
     minHeight: 104,
     flexDirection: 'row',
     alignItems: 'center',
@@ -499,30 +524,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  resultCardPressed: {
-    opacity: 0.78,
-  },
   thumbnail: {
-    width: 76,
-    height: 84,
+    width: 68,
+    height: 68,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-    borderRadius: 14,
-  },
-  thumbnailEmoji: {
-    fontSize: 43,
-  },
-  playButton: {
-    position: 'absolute',
-    right: 6,
-    bottom: 6,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: '#100D0EAA',
+    borderRadius: 18,
   },
   resultCopy: {
     flex: 1,
